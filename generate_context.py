@@ -16,7 +16,7 @@ def fetch_characters(input_file: Path) -> list[str]:
 
     api_key = os.getenv("TMDB_READ_ACCESS_TOKEN")
     if not api_key:
-        raise RuntimeError("Missing TMDB_READ_ACESS_TOKEN")
+        raise RuntimeError("Missing TMDB_READ_ACCESS_TOKEN")
 
     # use guessit library to parse file for info
     guessit_media = guessit.guessit(input_file.name)
@@ -27,9 +27,20 @@ def fetch_characters(input_file: Path) -> list[str]:
         return characters
 
     # Fetch TMDB id
-    multi_url = f"https://api.themoviedb.org/3/search/multi?query={media_title}&include_adult=true&language=en-US&page=1"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    search_response = requests.get(multi_url, headers=headers)
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "accept": "application/json",
+    }
+    search_response = requests.get(
+        "https://api.themoviedb.org/3/search/multi",
+        headers=headers,
+        params={
+            "query": media_title,
+            "include_adult": "false",
+            "language": "en-US",
+            "page": 1,
+        },
+    )
     search_response.raise_for_status()
     tmdb_result = search_response.json()
     if tmdb_result.get("results"):
@@ -37,10 +48,11 @@ def fetch_characters(input_file: Path) -> list[str]:
 
         # if type is movie -> fetch first 8 characters
         if media_type == "movie":
-            credits_url = (
-                f"https://api.themoviedb.org/3/movie/{tmdb_id}/credits?language=en-US"
+            credits_response = requests.get(
+                f"https://api.themoviedb.org/3/movie/{tmdb_id}/credits",
+                headers=headers,
+                params={"language": "en-US"},
             )
-            credits_response = requests.get(credits_url, headers=headers)
             credits_response.raise_for_status()
             credits = credits_response.json()
             if credits.get("cast", None):
@@ -49,8 +61,11 @@ def fetch_characters(input_file: Path) -> list[str]:
 
         # if tv show -> fetch first 20 characters (contains all characters in the entire show)
         elif media_type == "episode":
-            credits_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/aggregate_credits?language=en-US"
-            credits_response = requests.get(credits_url, headers=headers)
+            credits_response = requests.get(
+                f"https://api.themoviedb.org/3/tv/{tmdb_id}/aggregate_credits",
+                headers=headers,
+                params={"language": "en-US"},
+            )
             credits_response.raise_for_status()
             credits: dict = credits_response.json()
             if credits.get("cast", None):
