@@ -32,16 +32,11 @@ def write_subtitles(subtitles: list[Subtitle], output_path: Path) -> None:
     print(f"Writing subtitles to {output_path}...")
     with open(file=output_path, mode="w", encoding="utf-8") as f:
         f.write(subtitle_str)
-    print(f"Successfully wrote subtitles to {output_path}!")
+    print(f"Successfully wrote subtitles to {output_path}!"
+          "\n=========================================================\n")
     return
 
 
 def generate_srt(input_path: Path, output_path: Path) -> None:
     subtitles = create_subtitles(input_path=input_path)
     write_subtitles(subtitles=subtitles, output_path=output_path)
-
-if __name__ == "__main__":
-    generate_srt(
-        input_path=Path("transcript.json"),
-        output_path=Path("dark_knight.srt"),
-    )

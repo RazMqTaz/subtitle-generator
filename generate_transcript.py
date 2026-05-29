@@ -22,18 +22,15 @@ def _check_status(res: requests.Response) -> None:
 
 
 def get_config(
-    audio_url: Optional[str],
     file_id: Optional[str],
     translation: Optional[str],
     language_hints: Optional[list[str]],
-    enable_speaker_diarization: bool = False,
 ) -> dict:
     config = {
         "model": "stt-async-v4",
         "language_hints": language_hints,
+        "language_hints_strict": True,
         "enable_language_identification": True,
-        "enable_speaker_diarization": enable_speaker_diarization,
-        "audio_url": audio_url,
         "file_id": file_id,
     }
 
@@ -163,26 +160,17 @@ def delete_all_transcriptions(session: Session) -> None:
 
 def transcribe_file(
     session: Session,
-    audio_url: Optional[str],
-    audio_path: Optional[Path],
+    audio_path: Path,
     translation: Optional[str],
     language_hints: Optional[list[str]],
-    enable_speaker_diarization: bool,
     output_path: Path,
 ) -> None:
-    if audio_url is not None:
-        file_id = None
-    elif audio_path is not None:
-        file_id = upload_audio(session=session, audio_path=audio_path)
-    else:
-        raise ValueError("Missing audio: audio_url or audio_path must be specified.")
+    file_id = upload_audio(session=session, audio_path=audio_path)
 
     config = get_config(
-        audio_url=audio_url,
         file_id=file_id,
         translation=translation,
         language_hints=language_hints,
-        enable_speaker_diarization=enable_speaker_diarization,
     )
 
     transcription_id = create_transcription(session=session, config=config)
@@ -203,11 +191,9 @@ def transcribe_file(
 
 
 def generate_transcript(
-    audio_path: Optional[Path],
-    audio_url: Optional[str],
+    audio_path: Path,
     translation: Optional[str],
     language_hints: Optional[list[str]],
-    enable_speaker_diarization: bool,
     output_path: Path = Path("transcript.json"),
 ) -> None:
 
@@ -220,10 +206,8 @@ def generate_transcript(
 
     transcribe_file(
         session=session,
-        audio_url=audio_url,
         audio_path=audio_path,
         translation=translation,
         language_hints=language_hints,
-        enable_speaker_diarization=enable_speaker_diarization,
         output_path=output_path,
     )
