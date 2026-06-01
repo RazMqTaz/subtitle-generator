@@ -1,8 +1,11 @@
 import os
 import time
 import json
+import random
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 from requests import Session
 from pathlib import Path
@@ -25,6 +28,7 @@ def get_config(
     file_id: Optional[str],
     translation: Optional[str],
     language_hints: Optional[list[str]],
+    context: Optional[dict[str, list[str]]],
 ) -> dict:
     config = {
         "model": "stt-async-v4",
@@ -33,6 +37,8 @@ def get_config(
         "enable_language_identification": True,
         "file_id": file_id,
     }
+    if context and context.get("terms"):
+        config["context"] = context
 
     if translation is None:
         pass
@@ -48,29 +54,24 @@ def get_config(
 
 
 def upload_audio(session: Session, audio_path: Path) -> str:
-    print("Starting file upload...")
     with open(audio_path, "rb") as f:
         res = session.post(f"{SONIOX_API_BASE_URL}/v1/files", files={"file": f})
     _check_status(res=res)
     file_id = res.json()["id"]
-    print(f"File ID: {file_id}")
     return file_id
 
 
 def create_transcription(session: Session, config: dict) -> str:
-    print("Creating transcription...")
     res = session.post(
         f"{SONIOX_API_BASE_URL}/v1/transcriptions",
         json=config,
     )
     _check_status(res=res)
     transcription_id = res.json()["id"]
-    print(f"Transcription ID: {transcription_id}")
     return transcription_id
 
 
 def wait_until_completed(session: Session, transcription_id: str) -> None:
-    print("Waiting for transcription...")
     while True:
         res = session.get(f"{SONIOX_API_BASE_URL}/v1/transcriptions/{transcription_id}")
         _check_status(res=res)
@@ -79,7 +80,8 @@ def wait_until_completed(session: Session, transcription_id: str) -> None:
             return
         elif data["status"] == "error":
             raise Exception(f"Error: {data.get('error_message', 'Unknown error')}")
-        time.sleep(1)
+        # Polls every 10 sec + some random jitter to prevent 429 limit exceeded error.
+        time.sleep(10 + random.uniform(0, 5))
 
 
 def get_transcription(session: Session, transcription_id: str) -> dict:
@@ -105,7 +107,6 @@ def delete_all_files(session: Session) -> None:
     cursor: str = ""
 
     while True:
-        print("Retrieving files...")
         res = session.get(f"{SONIOX_API_BASE_URL}/v1/files?cursor={cursor}")
         _check_status(res=res)
         res_json = res.json()
@@ -116,7 +117,6 @@ def delete_all_files(session: Session) -> None:
 
     total = len(files)
     if total == 0:
-        print("No files to delete.")
         return
 
     print(f"Deleting {total} files...")
@@ -163,6 +163,7 @@ def transcribe_file(
     audio_path: Path,
     translation: Optional[str],
     language_hints: Optional[list[str]],
+    context: Optional[dict[str, list[str]]],
     output_path: Path,
 ) -> None:
     file_id = upload_audio(session=session, audio_path=audio_path)
@@ -171,6 +172,7 @@ def transcribe_file(
         file_id=file_id,
         translation=translation,
         language_hints=language_hints,
+        context=context,
     )
 
     transcription_id = create_transcription(session=session, config=config)
@@ -194,6 +196,7 @@ def generate_transcript(
     audio_path: Path,
     translation: Optional[str],
     language_hints: Optional[list[str]],
+    context: dict[str, list[str]],
     output_path: Path = Path("transcript.json"),
 ) -> None:
 
@@ -204,10 +207,20 @@ def generate_transcript(
     session = requests.Session()
     session.headers["Authorization"] = f"Bearer {api_key}"
 
+    retries = Retry(
+        total=5,
+        backoff_factor=2,
+        status_forcelist=[429],
+        allowed_methods=None,
+        respect_retry_after_header=True,
+    )
+    session.mount("https://", HTTPAdapter(max_retries=retries))
+
     transcribe_file(
         session=session,
         audio_path=audio_path,
         translation=translation,
         language_hints=language_hints,
         output_path=output_path,
+        context=context,
     )

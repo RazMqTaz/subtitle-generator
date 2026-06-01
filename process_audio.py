@@ -40,7 +40,7 @@ def process_audio(input_path: Path) -> list[Path] | None:
             "ffmpeg",
             "-i",
             f"{file}",  # input path
-            "-map", f"0:a:m:language:eng",  # Only processes english audio streams
+            "-map", f"0:a:0",  # Only processes english audio streams
             "-vn",  # no video
             # filter tag, filter sets audio to mono -
             # only from front center speaker because thats where dialogue comes from.

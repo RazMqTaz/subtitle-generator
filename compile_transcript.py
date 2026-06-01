@@ -48,13 +48,11 @@ def compile_transcript(input_path: Path) -> list[Cue]:
     """
     Orchestrates compile_transcript.py.
     """
-    print("Compiling transcript...")
     words = list_words(path=input_path)
     sentences = segment_sentences(words=words)
     cues = group_into_cues(sentences=sentences)
     cues = split_cue(cues=cues)
     cues = cleanup_timings(cues=cues)
-    print("Transcript compiled!")
     return cues
 
 
@@ -68,7 +66,6 @@ def list_words(path: Path) -> list[Word]:
     tokens = transcript["tokens"]
     if not tokens:
         return []
-    print("Compiling words...")
     words: list[Word] = []
     first = tokens[0]
     current_word: str = first["text"]
@@ -93,7 +90,6 @@ def list_words(path: Path) -> list[Word]:
 
     # send final word
     words.append(Word(text=current_word, start=start_ms, end=end_ms))
-    print(f"Successfully compiled {len(words)} words!")
     return words
 
 
@@ -105,7 +101,6 @@ def segment_sentences(words: list[Word]) -> list[list[Word]]:
     """
     sentences: list[list[Word]] = []
     sentence: list[Word] = []
-    print("Segmenting sentences...")
     for word in words:
         sentence.append(word)
 
@@ -119,7 +114,6 @@ def segment_sentences(words: list[Word]) -> list[list[Word]]:
             sentence = []
     if sentence:
         sentences.append(sentence)
-    print(f"Successfully segmented {len(sentences)} sentences!")
     return sentences
 
 
@@ -211,7 +205,6 @@ def group_into_cues(sentences: list[list[Word]]) -> list[Cue]:
     Convert list of sentences into flat list of Cues.
     Partitioning each sentence optimally via partition_sentence.
     """
-    print(f"Grouping partitioned sentences into cues...")
     cues: list[Cue] = []
     for sentence in sentences:
         partitions = partition_sentence(sentence=sentence)
@@ -223,7 +216,6 @@ def group_into_cues(sentences: list[list[Word]]) -> list[Cue]:
             )
             cues.append(cue)
 
-    print(f"Successfully grouped {len(cues)} cues!")
     return cues
 
 
@@ -284,7 +276,6 @@ def split_cue(cues: list[Cue]) -> list[Cue]:
     Adds line breaks to the cues so they fit on two lines if needed.
     """
     split_cues: list[Cue] = []
-    print(f"Attempting to split {len(cues)} cues...")
     for cue in cues:
         # cue is of acceptable length (<= 42) -> pass it on
         if len(cue.text) <= MAX_CHARS_PER_LINE:
@@ -308,7 +299,6 @@ def split_cue(cues: list[Cue]) -> list[Cue]:
         cost, broken_text = min(candidates, key=lambda c: c[0])
         split_cues.append(Cue(text=broken_text, start=cue.start, end=cue.end))
 
-    print(f"Successfully split {len(cues)} cues!")
     return split_cues
 
 
@@ -318,8 +308,7 @@ def cleanup_timings(cues: list[Cue]) -> list[Cue]:
     add lead in and lead out time while enforcing MIN_GAP
     """
     cleaned_cues: list[Cue] = []
-    print(f"Cleaning {len(cues)} cue timings...")
-    
+
     # subtract lead in time from first cue,
     # unless that would be negative in which case leave at 0
     cues[0].start = max(cues[0].start - LEAD_IN_MS, 0)
@@ -335,21 +324,22 @@ def cleanup_timings(cues: list[Cue]) -> list[Cue]:
         elif cue.end + LEAD_OUT_MS + MIN_GAP_MS + LEAD_IN_MS > cues[i + 1].start:
             # more than `MIN_GAP_MS` between cues ->
             # -> calculate ratio of `LEAD-OUT_MS` to total lead time
-                # -> add to cue.end
+            # -> add to cue.end
             # -> calculate ratio of `LEAD_IN_MS` to total lead time
-                # -> subtract from cue N + 1 start
+            # -> subtract from cue N + 1 start
             # still respects `MIN_GAP_MS`
             if cues[i + 1].start - cue.end > MIN_GAP_MS:
                 time_dif = cues[i + 1].start - cue.end - MIN_GAP_MS
                 cue.end += int(time_dif * (LEAD_OUT_MS / (LEAD_OUT_MS + LEAD_IN_MS)))
-                cues[i + 1].start -= int(time_dif * (LEAD_IN_MS / (LEAD_OUT_MS + LEAD_IN_MS)))
+                cues[i + 1].start -= int(
+                    time_dif * (LEAD_IN_MS / (LEAD_OUT_MS + LEAD_IN_MS))
+                )
 
         cleaned_cues.append(cue)
     last = cues[-1]
     # dont need to touch last.start, the one before already did
-    # SRT players allow cue to go past file duration 
+    # SRT players allow cue to go past file duration
     # (which will never happen anyways because movies have credits)
     last.end += LEAD_OUT_MS
     cleaned_cues.append(last)
-    print(f"Cleaned {len(cues)} cue timings!")
     return cleaned_cues

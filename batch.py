@@ -22,6 +22,7 @@ class Job:
     subtitle_path: Path
     language_hints: list[str]
     translation: str
+    context: dict[str, list[str]]
 
 
 class ByteBudget:
@@ -63,17 +64,20 @@ def run_job(
                 translation=job.translation,
                 language_hints=job.language_hints,
                 output_path=job.transcript_path,
+                context=job.context,
             )
             generate_srt(input_path=job.transcript_path, output_path=job.subtitle_path)
+    except Exception as e:
+        print(f"FAILED {job.audio_path.name}: {e}")
     finally:
         budget.release(file_size=file_size)
-
 
 def run_batch(
     processed_audio_files: list[Path],
     output_dir: Path,
     language_hints: list[str],
     translation: str,
+    context: dict[Path, dict[str, list[str]]],
 ) -> None:
     """
     Run batch of run_job() instances.
@@ -103,5 +107,6 @@ def run_batch(
                 subtitle_path=subtitle_path,
                 language_hints=language_hints,
                 translation=translation,
+                context=context[file],
             )
             executor.submit(run_job, job, sem, budget, file_size)
