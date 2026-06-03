@@ -27,11 +27,11 @@ def get_languages() -> list[str]:
     return [lang["code"] for lang in model["languages"]]
 
 
-def check_languages() -> None:
+def check_languages(args: argparse.Namespace) -> None:
     """
     Checks that any enabled language settings are in available languages.
     """
-    args = build_parser().parse_args()
+
     if args.translation or args.keep_only or args.language_hints:
         supported_languages = get_languages()
         if args.translation and args.translation not in supported_languages:
@@ -80,7 +80,7 @@ def main() -> None:
             shutil.rmtree(Path("./temp"), ignore_errors=True)
             failure_log = FailureLog()
 
-            check_languages()
+            check_languages(args=args)
 
             REQUIRED = ["ANTHROPIC_API_KEY", "TMDB_READ_ACCESS_TOKEN", "SONIOX_API_KEY"]
             missing = [k for k in REQUIRED if not os.getenv(k)]
