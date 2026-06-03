@@ -4,12 +4,12 @@ from compile_transcript import compile_transcript
 from pathlib import Path
 
 
-def create_subtitles(input_path: Path) -> list[Subtitle]:
+def create_subtitles(input_path: Path, kept_languages: list[str] | None) -> list[Subtitle]:
     """
     Use srt library to generate list of Subtitle objects from compiled transcript
     """
     subtitles: list[Subtitle] = []
-    cues = compile_transcript(input_path=input_path)
+    cues = compile_transcript(input_path=input_path, kept_languages=kept_languages)
     for i, cue in enumerate(cues):
         start = timedelta(milliseconds=cue.start)
         end = timedelta(milliseconds=cue.end)
@@ -24,12 +24,11 @@ def write_subtitles(subtitles: list[Subtitle], output_path: Path) -> None:
     """
 
     subtitle_str = compose(subtitles=subtitles, reindex=False)
-    print(subtitle_str)
     with open(file=output_path, mode="w", encoding="utf-8") as f:
         f.write(subtitle_str)
     return
 
 
-def generate_srt(input_path: Path, output_path: Path) -> None:
-    subtitles = create_subtitles(input_path=input_path)
+def generate_srt(input_path: Path, output_path: Path, kept_languages: list[str] | None) -> None:
+    subtitles = create_subtitles(input_path=input_path, kept_languages=kept_languages)
     write_subtitles(subtitles=subtitles, output_path=output_path)

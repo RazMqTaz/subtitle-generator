@@ -3,11 +3,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MAX_CHARS_PER_LINE = 42
-MAX_LINES = 2
 MAX_CHARS_TOTAL = 84
 MIN_DURATION_MS = 833
 MAX_DURATION_MS = 7000
-PAUSE_FOR_BREAK = 500
 MAX_CPS = 17
 MIN_GAP_MS = 83
 LEAD_IN_MS = 100
@@ -28,6 +26,23 @@ ABBREVIATIONS = {
     "u.s.",
     "u.k.",
 }
+# ===== weights for dp =====
+# Soft penalties (higher = worse)
+ORPHAN_PENALTY = 50  # per missing word below MIN_WORDS_PER_CUE
+SHORT_DURATION_PENALTY = 30  # flat, if duration < MIN_DURATION
+CPS_OVERSHOOT_PENALTY = 0.01  # per ms of reading speed shortfall
+NO_BOUNDARY_PENALTY = 20  # if cue doesn't end at .,;:?!
+IMBALANCE_PENALTY = 0.5  # per char away from ideal length
+CLAUSE_BREAK_COST = 0.0  # breaks at clause end - no cost
+SPACE_BREAK_COST = 5.0  # breaks at a space - has a cost
+
+# Bonuses (lower = better)
+SENTENCE_END_BONUS = -30  # if cue ends at .?!
+
+# Constants
+MIN_WORDS_PER_CUE = 3
+IDEAL_CHARS = 60
+
 
 
 @dataclass
@@ -44,11 +59,11 @@ class Cue:
     end: int
 
 
-def compile_transcript(input_path: Path) -> list[Cue]:
+def compile_transcript(input_path: Path, kept_languages: list[str] | None) -> list[Cue]:
     """
     Orchestrates compile_transcript.py.
     """
-    words = list_words(path=input_path)
+    words = list_words(path=input_path, kept_languages=kept_languages)
     sentences = segment_sentences(words=words)
     cues = group_into_cues(sentences=sentences)
     cues = split_cue(cues=cues)
@@ -56,7 +71,7 @@ def compile_transcript(input_path: Path) -> list[Cue]:
     return cues
 
 
-def list_words(path: Path) -> list[Word]:
+def list_words(path: Path, kept_languages: list[str] | None) -> list[Word]:
     """
     Read transcript JSON, merge sub-word tokens into whole words.
     """
@@ -64,8 +79,11 @@ def list_words(path: Path) -> list[Word]:
         transcript = json.load(f)
 
     tokens = transcript["tokens"]
+    if kept_languages:
+        tokens = [t for t in tokens if t.get("language") in kept_languages]
     if not tokens:
         return []
+
     words: list[Word] = []
     first = tokens[0]
     current_word: str = first["text"]
@@ -73,7 +91,6 @@ def list_words(path: Path) -> list[Word]:
     end_ms = first["end_ms"]
 
     for token in tokens[1:]:
-
         text = token["text"]
 
         # new word, starts with a ' ' -> send current Word
@@ -129,20 +146,6 @@ def cost_function(cue: list[Word]) -> float:
     Defines the cost of bad cues. Can be adjusted to adjust results
     """
     cost = 0.0
-    # Soft penalties (higher = worse)
-    ORPHAN_PENALTY = 50  # per missing word below MIN_WORDS_PER_CUE
-    SHORT_DURATION_PENALTY = 30  # flat, if duration < MIN_DURATION
-    CPS_OVERSHOOT_PENALTY = 0.01  # per ms of reading speed shortfall
-    NO_BOUNDARY_PENALTY = 20  # if cue doesn't end at .,;:?!
-    IMBALANCE_PENALTY = 0.5  # per char away from ideal length
-
-    # Bonuses (lower = better)
-    SENTENCE_END_BONUS = -30  # if cue ends at .?!
-
-    # Constants
-    MIN_WORDS_PER_CUE = 3
-    IDEAL_CHARS = 60
-
     num_words = len(cue)
     num_chars = sum(len(word.text) for word in cue)
     cue_time = cue[-1].end - cue[0].start
@@ -188,9 +191,7 @@ def partition_sentence(sentence: list[Word]) -> list[list[Word]]:
                 dp[i] = candidate
                 parent[i] = k
 
-    """
-    Now construct partition knowing the best location and return.
-    """
+    # Now construct partition knowing the best location and return.
     i = length
     while i > 0:
         cue = sentence[parent[i] : i]
@@ -224,29 +225,22 @@ def try_clause_break(text: str) -> tuple[float, str] | None:
     Find clause end (,;:) closest to the middle of `text` that
     would produce two lines, both within MAX_CHARS_PER_LINE
     """
-    CLAUSE_BREAK_COST = 0.0  # breaks at clause end - no cost
-    IMBALANCE_PENALTY = 0.5  # each char imbalance adds 0.5 to cost
 
     mid = len(text) // 2
-    if any(c in CLAUSE_ENDS for c in text):
-        clause_positions = [idx for idx, c in enumerate(text) if c in CLAUSE_ENDS]
-        closest_clause = min(clause_positions, key=lambda i: abs(i - mid))
+    clause_positions = [idx for idx, c in enumerate(text) if c in CLAUSE_ENDS]
+    for pos in sorted(clause_positions, key=lambda i: abs(i - mid)):
         if (
-            len(text[0 : closest_clause + 1]) > MAX_CHARS_PER_LINE
-            or len(text[closest_clause:].lstrip()) > MAX_CHARS_PER_LINE
+            len(text[: pos + 1]) <= MAX_CHARS_PER_LINE
+            and len(text[pos + 1:].lstrip()) <= MAX_CHARS_PER_LINE
         ):
-            clause_cost = float("inf")
-        else:
-            clause_cost = CLAUSE_BREAK_COST + (
-                abs(mid - closest_clause) * IMBALANCE_PENALTY
+            clause_cost = CLAUSE_BREAK_COST + abs(mid - pos) * IMBALANCE_PENALTY
+            # "Hello, world!" -> "Hello,\nworld!"
+            split_text = (
+                text[: pos + 1] + "\n" + text[pos + 1 :].lstrip()
             )
-        # "Hello, world!" -> "Hello,\nworld!"
-        split_text = (
-            text[: closest_clause + 1] + "\n" + text[closest_clause + 1 :].lstrip()
-        )
-        return (clause_cost, split_text)
-    else:
-        return None
+            return (clause_cost, split_text)
+    
+    return None
 
 
 def try_space_break(text: str) -> tuple[float, str] | None:
@@ -255,8 +249,6 @@ def try_space_break(text: str) -> tuple[float, str] | None:
     enforce MAX_CHARS_PER_LINE; would rather split once than
     not at all.
     """
-    SPACE_BREAK_COST = 5.0  # breaks at a space - has a cost
-    IMBALANCE_PENALTY = 0.5  # each char imbalance adds 0.5 to cost
 
     mid = len(text) // 2
 
@@ -306,9 +298,11 @@ def cleanup_timings(cues: list[Cue]) -> list[Cue]:
     """
     Clean up timing for each cue,
     add lead in and lead out time while enforcing MIN_GAP
+    Note: mutates cues list in place.
     """
     cleaned_cues: list[Cue] = []
-
+    if not cues:
+        return cleaned_cues
     # subtract lead in time from first cue,
     # unless that would be negative in which case leave at 0
     cues[0].start = max(cues[0].start - LEAD_IN_MS, 0)

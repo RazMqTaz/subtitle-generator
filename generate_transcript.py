@@ -9,11 +9,11 @@ from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 from requests import Session
 from pathlib import Path
+from utils import Context, FailureLog
 
-from typing import Optional
 
 SONIOX_API_BASE_URL = "https://api.soniox.com"
-
+MAX_WAIT = 3600  # seconds before ending transcribe job
 load_dotenv()
 
 
@@ -25,10 +25,10 @@ def _check_status(res: requests.Response) -> None:
 
 
 def get_config(
-    file_id: Optional[str],
-    translation: Optional[str],
-    language_hints: Optional[list[str]],
-    context: Optional[dict[str, list[str]]],
+    file_id: str | None,
+    translation: str | None,
+    language_hints: list[str] | None,
+    context: Context | None,
 ) -> dict:
     config = {
         "model": "stt-async-v4",
@@ -40,20 +40,18 @@ def get_config(
     if context and context.get("terms"):
         config["context"] = context
 
-    if translation is None:
-        pass
-    elif translation == "one_way":
+    if translation is not None:
         config["translation"] = {
             "type": "one_way",
-            "target_language": "es",
+            "target_language": translation,
         }
-    else:
-        raise ValueError(f"Unsupported translation {translation}")
 
     return config
 
 
 def upload_audio(session: Session, audio_path: Path) -> str:
+    file_size = audio_path.stat().st_size / (1024**2)
+    print(f"Uploading {audio_path}: {file_size:.1f} MB...")
     with open(audio_path, "rb") as f:
         res = session.post(f"{SONIOX_API_BASE_URL}/v1/files", files={"file": f})
     _check_status(res=res)
@@ -72,16 +70,22 @@ def create_transcription(session: Session, config: dict) -> str:
 
 
 def wait_until_completed(session: Session, transcription_id: str) -> None:
-    while True:
+    time_taken = 0
+    while time_taken <= MAX_WAIT:
         res = session.get(f"{SONIOX_API_BASE_URL}/v1/transcriptions/{transcription_id}")
         _check_status(res=res)
         data = res.json()
         if data["status"] == "completed":
             return
         elif data["status"] == "error":
-            raise Exception(f"Error: {data.get('error_message', 'Unknown error')}")
+            raise RuntimeError(f"Error: {data.get('error_message', 'Unknown error')}")
+        random_time = 10 + random.uniform(0, 5)
         # Polls every 10 sec + some random jitter to prevent 429 limit exceeded error.
-        time.sleep(10 + random.uniform(0, 5))
+        time.sleep(random_time)
+        time_taken += random_time
+    raise TimeoutError(
+        f"File took too long to transcribe (>= {MAX_WAIT // 60} minutes)."
+    )
 
 
 def get_transcription(session: Session, transcription_id: str) -> dict:
@@ -92,12 +96,12 @@ def get_transcription(session: Session, transcription_id: str) -> dict:
     return res.json()
 
 
-def parser_delete(session: Session, transcription_id: str) -> None:
+def delete_transcription(session: Session, transcription_id: str) -> None:
     res = session.delete(f"{SONIOX_API_BASE_URL}/v1/transcriptions/{transcription_id}")
     _check_status(res=res)
 
 
-def parser_delete_file(session: Session, file_id: str) -> None:
+def delete_file(session: Session, file_id: str) -> None:
     res = session.delete(f"{SONIOX_API_BASE_URL}/v1/files/{file_id}")
     _check_status(res=res)
 
@@ -123,7 +127,7 @@ def delete_all_files(session: Session) -> None:
     for idx, file in enumerate(files):
         file_id = file["id"]
         print(f"Deleting file: {file_id} ({idx + 1}/{total})")
-        parser_delete_file(session=session, file_id=file_id)
+        delete_file(session=session, file_id=file_id)
     print(f"Deleted {total} files.")
 
 
@@ -154,49 +158,82 @@ def delete_all_transcriptions(session: Session) -> None:
     for idx, transcription in enumerate(transcriptions):
         transcription_id = transcription["id"]
         print(f"Deleting transcription: {transcription_id} ({idx + 1}/{total})")
-        parser_delete(session=session, transcription_id=transcription_id)
+        delete_transcription(session=session, transcription_id=transcription_id)
     print(f"Deleted {total} transcriptions.")
 
 
 def transcribe_file(
     session: Session,
     audio_path: Path,
-    translation: Optional[str],
-    language_hints: Optional[list[str]],
-    context: Optional[dict[str, list[str]]],
+    translation: str | None,
+    language_hints: list[str] | None,
+    context: Context | None,
     output_path: Path,
+    failure_log: FailureLog,
 ) -> None:
-    file_id = upload_audio(session=session, audio_path=audio_path)
+    file_id = None
+    transcription_id = None
+    try:
 
-    config = get_config(
-        file_id=file_id,
-        translation=translation,
-        language_hints=language_hints,
-        context=context,
-    )
+        # cleanup in case previous session failed or left files.
+        delete_all_files(session=session)
+        delete_all_transcriptions(session=session)
 
-    transcription_id = create_transcription(session=session, config=config)
+        file_id = upload_audio(session=session, audio_path=audio_path)
 
-    wait_until_completed(session=session, transcription_id=transcription_id)
+        config = get_config(
+            file_id=file_id,
+            translation=translation,
+            language_hints=language_hints,
+            context=context,
+        )
 
-    result = get_transcription(session=session, transcription_id=transcription_id)
+        transcription_id = create_transcription(session=session, config=config)
+        print(f"Transcribing {audio_path}")
+        wait_until_completed(
+            session=session,
+            transcription_id=transcription_id,
+        )
 
-    # text = render_tokens(final_tokens=result["tokens"])
+        result = get_transcription(session=session, transcription_id=transcription_id)
 
-    with open(file=output_path, mode="w", encoding="utf-8") as f:
-        json.dump(result, f)
+        with open(file=output_path, mode="w", encoding="utf-8") as f:
+            json.dump(result, f)
 
-    parser_delete(session=session, transcription_id=transcription_id)
+    finally:
+        try:
+            if transcription_id is not None:
+                delete_transcription(session=session, transcription_id=transcription_id)
+                print(f"Successfully deleted transcription: {transcription_id}")
+        except Exception as e:
+            failure_log.record(
+                path=audio_path,
+                stage="[Cleanup]",
+                error=(
+                    f"Warning: transcription cleanup failed for {transcription_id}: {e}"
+                ),
+            )
 
-    if file_id is not None:
-        parser_delete_file(session=session, file_id=file_id)
+        try:
+            if file_id is not None:
+                delete_file(session=session, file_id=file_id)
+                print(f"Successfully deleted file: {file_id}")
+        except Exception as e:
+            failure_log.record(
+                path=audio_path,
+                stage="[Cleanup]",
+                error=(
+                    f"Warning: file cleanup failed for {file_id}: {e}"
+                ),
+            )
 
 
 def generate_transcript(
     audio_path: Path,
-    translation: Optional[str],
-    language_hints: Optional[list[str]],
-    context: dict[str, list[str]],
+    translation: str | None,
+    language_hints: list[str] | None,
+    context: Context,
+    failure_log: FailureLog,
     output_path: Path = Path("transcript.json"),
 ) -> None:
 
@@ -223,4 +260,5 @@ def generate_transcript(
         language_hints=language_hints,
         output_path=output_path,
         context=context,
+        failure_log=failure_log,
     )
