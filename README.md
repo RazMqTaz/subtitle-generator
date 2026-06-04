@@ -16,11 +16,9 @@ Point it at a video file or a folder of videos and it spits out SRT files.
 
 The vocab hints get passed to Soniox as `context.terms`. This is what lets it correctly transcribe things like "Coruscant" or character names that a generic ASR would butcher.
 
-## Requirements
+## API keys
 
-* Python 3.14+
-* `ffmpeg` and `ffprobe` on your PATH
-* Three API keys in a `.env` file:
+Three keys go in a `.env` file in the project root:
 
 ```
 SONIOX_API_KEY=...
@@ -30,7 +28,29 @@ ANTHROPIC_API_KEY=...
 
 The TMDB token is the long "Read Access Token" from your TMDB API settings, not the short v3 API key.
 
-## Install
+## Install: Docker (recommended)
+
+The Docker setup handles Python, ffmpeg, and dependencies for you. You only need Docker on your host.
+
+```bash
+git clone <repo>
+cd subtitle-generator
+# create .env (see above)
+docker compose build
+```
+
+The first build takes a couple of minutes. After that you're set.
+
+If `docker compose` complains about permissions, add yourself to the `docker` group once and you won't need `sudo`:
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+## Install: bare-metal (alternative)
+
+If you'd rather skip Docker, you need Python 3.14+, `uv`, and `ffmpeg`/`ffprobe` on your PATH.
 
 ```bash
 git clone <repo>
@@ -38,33 +58,70 @@ cd subtitle-generator
 uv sync
 ```
 
+Output and temp directories default to `./out` and `./temp` in the project root.
+
 ## Usage
+
+The examples below show both runtime styles. Pick the one that matches your install.
 
 Single file:
 
 ```bash
-uv run main.py run --media-path "/path/to/Movie.2024.mkv"
+# Docker
+docker compose run --rm subgen run --media-path ~/Videos/Movie.2024.mkv --output-dir /out
+
+# Bare-metal
+uv run main.py run --media-path ~/Videos/Movie.2024.mkv
 ```
 
 Folder (recurses into subfolders):
 
 ```bash
-uv run main.py run --media-path "/path/to/tv-shows/"
+# Docker
+docker compose run --rm subgen run --media-path ~/Videos/tv-shows --output-dir /out
+
+# Bare-metal
+uv run main.py run --media-path ~/Videos/tv-shows
 ```
 
 With language hints (helps Soniox stick to specific languages when audio is multilingual):
 
 ```bash
-uv run main.py run --media-path "/path/to/foo.mkv" --language-hints en
+uv run main.py run --media-path ~/Videos/foo.mkv --language-hints en
 ```
 
 With translation (Soniox transcribes the source language and translates the cues into the target):
 
 ```bash
-uv run main.py run --media-path "/path/to/foo.mkv" --translation es
+uv run main.py run --media-path ~/Videos/foo.mkv --translation es
 ```
 
-Output goes to `./out/` by default. Use `--output-dir` to change that.
+With language filter (drops tokens Soniox tags as anything other than the chosen language; useful for content with made-up alien languages):
+
+```bash
+uv run main.py run --media-path ~/Videos/foo.mkv --keep-only en
+```
+
+### Where the files have to live
+
+The Docker container only sees what's bind-mounted. By default `compose.yaml` mounts your home directory read-only at the same path inside the container, so any path under `~` works as-is. If you want to process files outside your home (an external drive, `/mnt/...`, etc.), edit the `volumes:` block in `compose.yaml` to mount that path.
+
+The Docker output path `/out` is mapped to `./out` in the project root. SRT files land there on your host after each run.
+
+### Optional: shell alias for less typing
+
+Add this to `~/.bashrc` (or your shell's equivalent) so you can run from anywhere:
+
+```bash
+alias subgen='docker compose -f /path/to/subtitle-generator/compose.yaml run --rm subgen run --output-dir /out --media-path'
+```
+
+Then:
+
+```bash
+subgen ~/Videos/foo.mkv
+subgen ~/Videos/tv-shows/
+```
 
 ## How failures are handled
 

@@ -1,0 +1,12 @@
+.env
+temp/
+out/
+__pycache__/
+.git
+*.pyc
+debug.log
+*.log
+.venv
+blogpost.mdx
+Dockerfile
+compose.yaml

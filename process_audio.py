@@ -31,7 +31,7 @@ def find_eng_stream(file: Path) -> int:
         "-v", "error",  # only display actual errors
         "-select_streams", "a",  # restricts output to audio only
         "-show_entries", "stream=index:stream_tags=language",  # controls which fields get printed
-        "-output_format", "json",
+        "-print_format", "json",
         file,
     ]
 
@@ -55,7 +55,7 @@ def get_channel_count(file: Path, stream_idx: int) -> int:
         "-v", "error",
         "-select_streams", f"a:{stream_idx}",
         "-show_entries", "stream=channels",
-        "-output_format", "json",
+        "-print_format", "json",
         f"{file}",
     ]
     out = subprocess.run(command, capture_output=True, text=True, check=True).stdout

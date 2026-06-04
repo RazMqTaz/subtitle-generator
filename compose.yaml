@@ -1,0 +1,11 @@
+services:
+  subgen:
+    build: .
+    env_file: .env
+    environment:
+      SUBGEN_TEMP_DIR: /tmp/subgen
+    tmpfs:
+      - /tmp/subgen:size=8g
+    volumes:
+      - ${HOME}:${HOME}:ro
+      - ./out:/out

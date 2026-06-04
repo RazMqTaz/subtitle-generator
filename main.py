@@ -73,11 +73,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-
+    temp_dir = Path(os.getenv("SUBGEN_TEMP_DIR", "./temp"))
     if args.command == "run":
         try:
+            
             # in case process was interruped before cleaning /temp
-            shutil.rmtree(Path("./temp"), ignore_errors=True)
+            shutil.rmtree(temp_dir, ignore_errors=True)
             failure_log = FailureLog()
 
             check_languages(args=args)
@@ -88,7 +89,6 @@ def main() -> None:
                 raise SystemExit(f"Missing required env vars: {', '.join(missing)}")
 
             Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-            temp_dir = Path("./temp")
             temp_dir.mkdir(parents=True, exist_ok=True)
             processed_audio_files = process_audio(
                 args.media_path, temp_dir=temp_dir, failure_log=failure_log
@@ -118,7 +118,7 @@ def main() -> None:
                     )
                 sys.exit(1)
         finally:
-            shutil.rmtree(Path("./temp"), ignore_errors=True)
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
