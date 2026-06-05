@@ -13,3 +13,10 @@ wheels/
 .env
 .env.*
 !.env.example
+
+# Runtime artifacts
+temp/
+out/
+web_jobs/
+debug.log
+*.log

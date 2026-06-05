@@ -1,6 +1,7 @@
 .env
 temp/
 out/
+web_jobs/
 __pycache__/
 .git
 *.pyc

@@ -4,6 +4,8 @@ Generates SRT subtitle files for video using Soniox's async speech-to-text. Buil
 
 Point it at a video file or a folder of videos and it spits out SRT files.
 
+> This is the **`frontend`** branch. It includes everything on `main` plus an optional browser-based UI for demos. The CLI workflow is unchanged. If you only need the CLI, the `main` branch is leaner.
+
 ## What it actually does
 
 1. Pulls the English audio out of each video with ffmpeg, downmixes to mono, normalizes loudness so quiet dialogue is easier to pick up.
@@ -123,6 +125,61 @@ subgen ~/Videos/foo.mkv
 subgen ~/Videos/tv-shows/
 ```
 
+## Web UI (demo)
+
+A small browser frontend wraps the pipeline for public demos. It accepts the three API keys, takes file uploads, runs the pipeline as a subprocess on the server, and serves the resulting SRT files back as downloads. The CLI is unaffected.
+
+### Run locally
+
+```bash
+uv sync --extra web
+ALLOWED_ORIGIN='*' uv run uvicorn server:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://localhost:8000` in a browser. Enter the keys, drop in one or more video files, and click "Generate subtitles." The page polls every two seconds for progress and shows download links when each job finishes.
+
+`ALLOWED_ORIGIN='*'` disables the origin check for local development. Use the actual deployment URL in production.
+
+### Deploy
+
+The server is designed to run behind a TLS-terminating reverse proxy (Railway, Caddy, nginx, Cloudflare, etc.). Production checklist:
+
+1. **Set `ALLOWED_ORIGIN`** to the exact origin users will hit the demo on, e.g. `https://demo.soniox.com`. The server refuses to start without it.
+2. **Pin the Tailwind version and compute its SRI hash.** Pick a version, then run:
+   ```bash
+   curl -sL https://unpkg.com/@tailwindcss/browser@VERSION \
+     | openssl dgst -sha384 -binary | openssl base64 -A
+   ```
+   Replace `@VERSION` and the placeholder `integrity="sha384-…"` value in `templates/index.html`. The browser will refuse to execute the script if its hash ever changes, defending against a compromised CDN.
+3. **Make sure no `.env` file exists in the production container** and that no `SONIOX_API_KEY` / `TMDB_READ_ACCESS_TOKEN` / `ANTHROPIC_API_KEY` env vars are set at the platform level. Any of those would silently override the per-request keys. Users must supply their own keys via the form.
+4. **Verify HTTPS is enforced** at the proxy layer (Railway gives you this by default).
+
+### Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ALLOWED_ORIGIN` | (required) | Exact origin the browser must send on POSTs. Use `*` only for local dev. |
+| `JOB_TTL_HOURS` | `24` | How long job artifacts live on disk before the sweeper deletes them. |
+| `SWEEP_INTERVAL_SECONDS` | `3600` | How often the sweeper runs. |
+
+### What the server does and doesn't do
+
+* **Each job runs as a subprocess.** Keys are passed via the subprocess environment, used for that one job, and then dropped. They are never written to disk, never logged, and never echoed in the events shown to the client.
+* **A strict Content Security Policy** is set on every response. `connect-src 'self'` is the key line: even if an attacker managed to run a script on the page, the browser would refuse to send the keys to any origin except ours.
+* **Origin / Referer is checked** on every state-changing request, blocking cross-site form submissions.
+* **Job artifacts auto-delete.** The browser fires a cleanup request via `navigator.sendBeacon` when the user closes or refreshes the page. A daemon sweep also runs hourly and removes any directory older than `JOB_TTL_HOURS`.
+* **Subprocess output is not returned to the client.** Only a whitelist of recognized progress lines (parsed server-side into clean events) is shown. ffmpeg output, Python tracebacks, and anything unrecognized goes only to the server's own stderr.
+* **No client-side key persistence.** Keys live in the form fields until submit, then are gone. No `localStorage`, no `sessionStorage`. `autocomplete="new-password"` is set so browsers don't offer to save them.
+
+### What's deliberately not in scope
+
+These belong to the deployment, not the app:
+
+* **TLS / HSTS enforcement.** Done at the reverse proxy. The `Strict-Transport-Security` header is sent regardless.
+* **DDoS mitigation, WAF rules.** Use Cloudflare or the platform's edge.
+* **Rate limiting.** Users are billed against their own Soniox quota; abuse of the demo box itself would be an ops concern handled at the proxy or platform layer.
+* **Auth.** This is a public, key-bring-your-own demo. There is intentionally no login.
+
 ## How failures are handled
 
 Anything that goes wrong with a single file (bad ffmpeg, no TMDB match, Soniox timeout, unparseable filename) gets recorded and the rest of the batch keeps going. At the end you get a summary:
@@ -167,6 +224,10 @@ generate_transcript.py  Soniox API wrapper (upload, poll, fetch)
 compile_transcript.py   word tokens to cue partitioning
 generate_srt.py         cues to SRT file
 utils.py                FailureLog and Context types
+
+server.py               FastAPI server for the web UI demo
+templates/index.html    Web UI page
+static/app.js           Web UI logic
 ```
 
 Every stage takes a shared `FailureLog`, so a TMDB hiccup, an ffmpeg crash, and a Soniox timeout all end up in the same end-of-run summary.

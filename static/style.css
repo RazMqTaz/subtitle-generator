@@ -1,0 +1,6 @@
+/* Custom styles layered on top of Tailwind. Lives in its own file so the
+   page's CSP doesn't need to allow inline <style> blocks. */
+
+body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
