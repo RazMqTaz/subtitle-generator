@@ -48,6 +48,44 @@ sudo usermod -aG docker $USER
 newgrp docker
 ```
 
+## Run without the repo (just the published image)
+
+If you don't want to clone or build anything, pull the prebuilt image from Docker Hub. It's multi-arch, so Docker grabs the right build for your CPU (Intel or ARM) automatically — there's no architecture to pick.
+
+You need just two files in a folder:
+
+**`compose.yaml`**
+
+```yaml
+services:
+  subgen:
+    image: razmqtaz/subgen:latest
+    env_file: .env
+    environment:
+      SUBGEN_TEMP_DIR: /tmp/subgen
+    tmpfs:
+      - /tmp/subgen:size=8g
+    volumes:
+      - ${HOME}:${HOME}:ro
+      - ./out:/out
+```
+
+**`.env`** (see [API keys](#api-keys) above)
+
+```
+SONIOX_API_KEY=...
+TMDB_READ_ACCESS_TOKEN=...
+ANTHROPIC_API_KEY=...
+```
+
+Then run — the first run auto-pulls the image:
+
+```bash
+docker compose run --rm subgen run --media-path ~/Videos/Show --output-dir /out
+```
+
+Media has to live under your home directory (it's mounted read-only); SRT files land in `./out`. A ready-made copy of this compose file ships in the repo as `compose.pull.yaml`. No Python, ffmpeg, or repo clone required — just Docker and your keys.
+
 ## Install: bare-metal (alternative)
 
 If you'd rather skip Docker, you need Python 3.14+, `uv`, and `ffmpeg`/`ffprobe` on your PATH.

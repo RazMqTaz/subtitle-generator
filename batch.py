@@ -64,6 +64,26 @@ def is_processable(file_duration: float, file_size: int) -> bool:
     return True
 
 
+def resolve_subtitle_language(
+    translation: str | None,
+    kept_languages: list[str] | None,
+    language_hints: list[str] | None,
+) -> str | None:
+    """
+    Pick the ISO 639-1 code that best represents the SRT's language, used for the
+    Jellyfin filename tag (e.g. name.default.en.srt). Priority: kept_languages
+    (literally what's filtered into the output), then the translation target,
+    then the first language hint. Returns None when no language is configured.
+    """
+    if kept_languages:
+        return kept_languages[0]
+    if translation:
+        return translation
+    if language_hints:
+        return language_hints[0]
+    return None
+
+
 def run_job(
     job: Job,
     budget: ByteBudget,
@@ -97,9 +117,10 @@ def run_batch(
     processed_audio_files: list[Path],
     temp_dir: Path,
     output_dir: Path,
-    language_hints: list[str],
-    kept_languages: list[str],
-    translation: str,
+    language_hints: list[str] | None,
+    kept_languages: list[str] | None,
+    translation: str | None,
+    default: bool,
     context: dict[Path, Context],
     failure_log: FailureLog,
 ) -> None:
@@ -116,7 +137,19 @@ def run_batch(
             if is_processable(file_duration=file_duration, file_size=file_size):
                 transcript_path = temp_dir / f"{file.stem}.transcript.json"
                 # assumes unique filenames across `input_path`, otherwise collision is possible.
-                subtitle_path = output_dir / file.with_suffix(".srt").name
+                # Jellyfin reads the language code + `.default` flag from the filename suffix
+                # chain (e.g. name.default.en.srt) to label and pre-select the track.
+                lang = resolve_subtitle_language(
+                    translation=translation,
+                    kept_languages=kept_languages,
+                    language_hints=language_hints,
+                )
+                parts = [file.stem]
+                if default:
+                    parts.append("default")
+                if lang:
+                    parts.append(lang)
+                subtitle_path = output_dir / f"{'.'.join(parts)}.srt"
                 job = Job(
                     audio_path=file,
                     transcript_path=transcript_path,

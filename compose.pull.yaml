@@ -1,0 +1,17 @@
+# Pull-based compose for running the published image WITHOUT cloning the repo.
+# Copy this file (rename to compose.yaml) into a folder next to a .env, then:
+#   docker compose run --rm subgen run --media-path ~/Videos/Show --output-dir /out
+#
+# This differs from the repo's compose.yaml only in that it `image:`-pulls the
+# published build instead of `build:`-ing from source.
+services:
+  subgen:
+    image: razmqtaz/subgen:latest      # multi-arch: Docker selects your CPU's build
+    env_file: .env
+    environment:
+      SUBGEN_TEMP_DIR: /tmp/subgen
+    tmpfs:
+      - /tmp/subgen:size=8g
+    volumes:
+      - ${HOME}:${HOME}:ro             # media must live under $HOME (read-only)
+      - ./out:/out                     # SRTs land in ./out on the host

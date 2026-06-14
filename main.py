@@ -67,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--language-hints", nargs="*")
     run.add_argument("--keep-only", nargs="*", help="Drop transcript tokens not in this language code")
     run.add_argument("--translation", type=str)
+    run.add_argument(
+        "--default",
+        action="store_true",
+        help="Tag the SRT as the default subtitle track (adds .default to the filename for Jellyfin)",
+    )
 
     return parser
 
@@ -105,6 +110,7 @@ def main() -> None:
                         language_hints=args.language_hints,
                         kept_languages=args.keep_only,
                         translation=args.translation,
+                        default=args.default,
                         context=context,
                         failure_log=failure_log,
                     )
