@@ -31,7 +31,7 @@ def get_config(
     context: Context | None,
 ) -> dict:
     config = {
-        "model": "stt-async-v4",
+        "model": "stt-async-v5",
         "language_hints": language_hints,
         "language_hints_strict": True,
         "enable_language_identification": True,

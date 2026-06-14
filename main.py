@@ -23,7 +23,7 @@ def get_languages() -> list[str]:
     response = requests.get("https://api.soniox.com/v1/models", headers=headers)
     response.raise_for_status()
     data = response.json()
-    model = next((m for m in data["models"] if m["id"] == "stt-async-v4"))
+    model = next((m for m in data["models"] if m["id"] == "stt-async-v5"))
     return [lang["code"] for lang in model["languages"]]
 
 
