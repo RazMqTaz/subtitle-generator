@@ -115,8 +115,9 @@ def run_job(
 
 def run_batch(
     processed_audio_files: list[Path],
+    source_paths: dict[Path, Path],
     temp_dir: Path,
-    output_dir: Path,
+    output_dir: Path | None,
     language_hints: list[str] | None,
     kept_languages: list[str] | None,
     translation: str | None,
@@ -149,7 +150,11 @@ def run_batch(
                     parts.append("default")
                 if lang:
                     parts.append(lang)
-                subtitle_path = output_dir / f"{'.'.join(parts)}.srt"
+                # No --output-dir: write the SRT next to its source video (where
+                # Jellyfin/Plex auto-detect external subs). Otherwise flat-dump
+                # everything into output_dir.
+                dest_dir = output_dir if output_dir is not None else source_paths[file].parent
+                subtitle_path = dest_dir / f"{'.'.join(parts)}.srt"
                 job = Job(
                     audio_path=file,
                     transcript_path=transcript_path,

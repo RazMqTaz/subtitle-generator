@@ -13,5 +13,5 @@ services:
     tmpfs:
       - /tmp/subgen:size=8g
     volumes:
-      - ${HOME}:${HOME}:ro             # media must live under $HOME (read-only)
-      - ./out:/out                     # SRTs land in ./out on the host
+      - ${HOME}:${HOME}                # media under $HOME; read-write so SRTs can land next to videos
+      - ./out:/out                     # only used when you pass --output-dir /out

@@ -7,5 +7,6 @@ services:
     tmpfs:
       - /tmp/subgen:size=8g
     volumes:
-      - ${HOME}:${HOME}:ro
+      # read-write so SRTs can be written back next to the source videos
+      - ${HOME}:${HOME}
       - ./out:/out

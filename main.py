@@ -63,7 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = subparsers.add_parser("run", help="Run the full pipeline")
     run.add_argument("--media-path", type=Path, required=True)
-    run.add_argument("--output-dir", type=Path, default=Path("./out"))
+    run.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Flat-dump all SRTs into this folder; if omitted, each SRT is written next to its source video",
+    )
     run.add_argument("--language-hints", nargs="*")
     run.add_argument("--keep-only", nargs="*", help="Drop transcript tokens not in this language code")
     run.add_argument("--translation", type=str)
@@ -86,6 +91,8 @@ def main() -> None:
             shutil.rmtree(temp_dir, ignore_errors=True)
             failure_log = FailureLog()
 
+            print("Subtitle Generator v0.1.0, built by Erazem Mattick, powered by Soniox.")
+
             check_languages(args=args)
 
             REQUIRED = ["ANTHROPIC_API_KEY", "TMDB_READ_ACCESS_TOKEN", "SONIOX_API_KEY"]
@@ -93,18 +100,20 @@ def main() -> None:
             if missing:
                 raise SystemExit(f"Missing required env vars: {', '.join(missing)}")
 
-            Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+            if args.output_dir is not None:
+                args.output_dir.mkdir(parents=True, exist_ok=True)
             temp_dir.mkdir(parents=True, exist_ok=True)
-            processed_audio_files = process_audio(
+            audio_sources = process_audio(
                 args.media_path, temp_dir=temp_dir, failure_log=failure_log
             )
-            if processed_audio_files:
+            if audio_sources:
                 survivors, context = generate_context(
-                    files=processed_audio_files, failure_log=failure_log
+                    files=list(audio_sources), failure_log=failure_log
                 )
                 if survivors:
                     run_batch(
                         processed_audio_files=survivors,
+                        source_paths=audio_sources,
                         temp_dir=temp_dir,
                         output_dir=args.output_dir,
                         language_hints=args.language_hints,

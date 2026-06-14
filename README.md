@@ -140,11 +140,14 @@ With language filter (drops tokens Soniox tags as anything other than the chosen
 uv run main.py run --media-path ~/Videos/foo.mkv --keep-only en
 ```
 
-### Where the files have to live
+### Where the files go
 
-The Docker container only sees what's bind-mounted. By default `compose.yaml` mounts your home directory read-only at the same path inside the container, so any path under `~` works as-is. If you want to process files outside your home (an external drive, `/mnt/...`, etc.), edit the `volumes:` block in `compose.yaml` to mount that path.
+The Docker container only sees what's bind-mounted. `compose.yaml` mounts your home directory at the same path inside the container, so any path under `~` works as-is. It's mounted **read-write** so the tool can write SRTs back next to your videos (see below). To process files outside your home (an external drive, `/mnt/...`, etc.), add that path to the `volumes:` block.
 
-The Docker output path `/out` is mapped to `./out` in the project root. SRT files land there on your host after each run.
+**Output location depends on whether you pass `--output-dir`:**
+
+* **Omit `--output-dir`** (default): each `.srt` is written **next to its source video**, with a matching filename — this is what Jellyfin/Plex want for automatic external-subtitle pickup. (Requires the read-write home mount above.)
+* **`--output-dir /out`**: every `.srt` is dumped flat into a single folder. In Docker, `/out` maps to `./out` in the project root — change the left side of the `./out:/out` volume to send output elsewhere.
 
 ### Optional: shell alias for less typing
 

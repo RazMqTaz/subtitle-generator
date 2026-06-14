@@ -93,16 +93,18 @@ def discover_files(input_path: Path, failure_log: FailureLog) -> list[Path]:
 
 def process_audio(
     input_path: Path, temp_dir: Path, failure_log: FailureLog
-) -> list[Path]:
+) -> dict[Path, Path]:
     """
-    Convert processable files to 16000Hz .flac, normalize audio levels
+    Convert processable files to 16000Hz .flac, normalize audio levels.
+    Returns a mapping of {processed .flac path: original source video path},
+    so downstream steps can write the SRT back next to the source if asked.
     """
 
-    processed_files: list[Path] = []
+    processed: dict[Path, Path] = {}
     
     files = discover_files(input_path=input_path, failure_log=failure_log)
     if not files:
-        return []
+        return {}
 
     futures: list[tuple[Path, Path, Future]] = []
     with ThreadPoolExecutor(max_workers=4) as ex:
@@ -144,8 +146,8 @@ def process_audio(
             for file, output_path, future in futures:
                 try:
                     future.result()
-                    processed_files.append(output_path)
+                    processed[output_path] = file
                     print(f"Successfully processed {file}!")
                 except Exception as e:
                     failure_log.record(path=file, stage="[Audio Processing]", error=str(e))
-    return processed_files
+    return processed
