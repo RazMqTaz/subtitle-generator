@@ -66,8 +66,8 @@ services:
     tmpfs:
       - /tmp/subgen:size=8g
     volumes:
-      - ${HOME}:${HOME}:ro
-      - ./out:/out
+      - ${HOME}:${HOME}              # read-write so SRTs can land next to your videos
+      - ./out:/out                   # only used if you pass --output-dir /out
 ```
 
 **`.env`** (see [API keys](#api-keys) above)
@@ -81,10 +81,10 @@ ANTHROPIC_API_KEY=...
 Then run — the first run auto-pulls the image:
 
 ```bash
-docker compose run --rm subgen run --media-path ~/Videos/Show --output-dir /out
+docker compose run --rm subgen run --media-path ~/Videos/Show
 ```
 
-Media has to live under your home directory (it's mounted read-only); SRT files land in `./out`. A ready-made copy of this compose file ships in the repo as `compose.pull.yaml`. No Python, ffmpeg, or repo clone required — just Docker and your keys.
+Media has to live under your home directory (mounted read-write). By default each `.srt` is written next to its source video — what Jellyfin/Plex want; pass `--output-dir ~/Subtitles` (any path under your home) to collect them in one folder instead. A ready-made copy of this compose file ships in the repo as `compose.pull.yaml`. No Python, ffmpeg, or repo clone required — just Docker and your keys.
 
 ## Install: bare-metal (alternative)
 
@@ -96,7 +96,7 @@ cd subtitle-generator
 uv sync
 ```
 
-Output and temp directories default to `./out` and `./temp` in the project root.
+The temp directory defaults to `./temp`. By default each `.srt` is written next to its source video; pass `--output-dir` to collect them all in one folder instead (see [Where the files go](#where-the-files-go)).
 
 ## Usage
 
@@ -140,21 +140,39 @@ With language filter (drops tokens Soniox tags as anything other than the chosen
 uv run main.py run --media-path ~/Videos/foo.mkv --keep-only en
 ```
 
+Mark the subtitle as the default track (adds `.default` to the filename so Jellyfin/Plex pre-select it):
+
+```bash
+uv run main.py run --media-path ~/Videos/foo.mkv --default
+```
+
+The `.srt` filename is also tagged with the language code when one is known (from `--keep-only`, `--translation`, or `--language-hints`), so a run with `--keep-only en --default` produces `Movie.2024.default.en.srt`.
+
 ### Where the files go
 
-The Docker container only sees what's bind-mounted. `compose.yaml` mounts your home directory at the same path inside the container, so any path under `~` works as-is. It's mounted **read-write** so the tool can write SRTs back next to your videos (see below). To process files outside your home (an external drive, `/mnt/...`, etc.), add that path to the `volumes:` block.
+The Docker container only sees what's bind-mounted. `compose.yaml` mounts your home directory at the same path inside the container, so any path under `~` works as-is — for both input and output. It's mounted **read-write** so the tool can write SRTs back next to your videos. To use files outside your home (an external drive, `/mnt/...`, etc.), add that path to the `volumes:` block.
 
-**Output location depends on whether you pass `--output-dir`:**
+**Output location** depends on whether you pass `--output-dir`:
 
-* **Omit `--output-dir`** (default): each `.srt` is written **next to its source video**, with a matching filename — this is what Jellyfin/Plex want for automatic external-subtitle pickup. (Requires the read-write home mount above.)
-* **`--output-dir /out`**: every `.srt` is dumped flat into a single folder. In Docker, `/out` maps to `./out` in the project root — change the left side of the `./out:/out` volume to send output elsewhere.
+* **Omit it** (default): each `.srt` is written **next to its source video**, with a matching filename — this is what Jellyfin/Plex want for automatic external-subtitle pickup. (Relies on the read-write home mount above.)
+* **`--output-dir <folder>`**: every `.srt` is dumped flat into one folder.
+
+**Setting a custom output folder in Docker.** Because your home is mounted read-write at the same path, just point `--output-dir` at any absolute path under your home and the files land there on the host directly — no compose editing needed:
+
+```bash
+docker compose run --rm subgen run \
+  --media-path ~/Videos/Show \
+  --output-dir ~/Subtitles      # SRTs appear in ~/Subtitles on your host
+```
+
+As a convenience the repo's `compose.yaml` also maps `/out` → `./out` (project root), so `--output-dir /out` drops everything in `./out`; remap the left side of that `./out:/out` volume to relocate it. But for most cases an `--output-dir` under `~` is simpler. (A folder outside `~` only works if you've added a volume for it.)
 
 ### Optional: shell alias for less typing
 
 Add this to `~/.bashrc` (or your shell's equivalent) so you can run from anywhere:
 
 ```bash
-alias subgen='docker compose -f /path/to/subtitle-generator/compose.yaml run --rm subgen run --output-dir /out --media-path'
+alias subgen='docker compose -f /path/to/subtitle-generator/compose.yaml run --rm subgen run --media-path'
 ```
 
 Then:
@@ -208,6 +226,9 @@ generate_transcript.py  Soniox API wrapper (upload, poll, fetch)
 compile_transcript.py   word tokens to cue partitioning
 generate_srt.py         cues to SRT file
 utils.py                FailureLog and Context types
+Dockerfile              image definition (Python + ffmpeg + uv)
+compose.yaml            local dev compose (builds from source)
+compose.pull.yaml       end-user compose (pulls the published image)
 ```
 
 Every stage takes a shared `FailureLog`, so a TMDB hiccup, an ffmpeg crash, and a Soniox timeout all end up in the same end-of-run summary.

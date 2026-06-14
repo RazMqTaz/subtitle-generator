@@ -13,3 +13,6 @@ wheels/
 .env
 .env.*
 !.env.example
+
+# Maintainer build/publish script
+build_and_push.sh

@@ -10,3 +10,4 @@ debug.log
 blogpost.mdx
 Dockerfile
 compose.yaml
+build_and_push.sh

@@ -3,17 +3,30 @@ from datetime import timedelta
 from compile_transcript import compile_transcript
 from pathlib import Path
 
+ATTRIBUTION_TEXT = (
+    "Transcribed by Erazem Mattick\nhttps://github.com/RazMqTaz/subtitle-generator"
+)
+ATTRIBUTION_DURATION_MS = 4000
+
 
 def create_subtitles(input_path: Path, kept_languages: list[str] | None) -> list[Subtitle]:
     """
     Use srt library to generate list of Subtitle objects from compiled transcript
     """
-    subtitles: list[Subtitle] = []
+    # Attribution cue shown from 0s; dialogue cues follow starting at index 2.
+    subtitles: list[Subtitle] = [
+        Subtitle(
+            index=1,
+            start=timedelta(0),
+            end=timedelta(milliseconds=ATTRIBUTION_DURATION_MS),
+            content=ATTRIBUTION_TEXT,
+        )
+    ]
     cues = compile_transcript(input_path=input_path, kept_languages=kept_languages)
     for i, cue in enumerate(cues):
         start = timedelta(milliseconds=cue.start)
         end = timedelta(milliseconds=cue.end)
-        subtitles.append(Subtitle(index=i + 1, start=start, end=end, content=cue.text))
+        subtitles.append(Subtitle(index=i + 2, start=start, end=end, content=cue.text))
 
     return subtitles
 
