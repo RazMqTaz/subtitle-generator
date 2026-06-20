@@ -8,7 +8,8 @@ from pathlib import Path
 from pydantic import BaseModel
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from utils import FailureLog, Context
+from utils import FailureLog, Context, PROGRESS_COLUMNS
+from rich.progress import Progress
 
 from dotenv import load_dotenv
 
@@ -264,11 +265,12 @@ def generate_context(
     context_map: dict[Path, Context] = {}
     survivors: list[Path] = []
     worker = functools.partial(_generate_context_file, failure_log=failure_log)
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        for file, ctx in ex.map(worker, files):
-            if ctx is not None:
-                survivors.append(file)
-                context_map[file] = ctx
-                print(f"Generated context for {file}.\n")
-
+    with Progress(*PROGRESS_COLUMNS) as progress:
+        task = progress.add_task("Generating context", total=len(files))
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for file, ctx in ex.map(worker, files):
+                if ctx is not None:
+                    survivors.append(file)
+                    context_map[file] = ctx
+                progress.advance(task)
     return (survivors, context_map)

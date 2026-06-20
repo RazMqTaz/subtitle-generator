@@ -8,6 +8,7 @@ from pathlib import Path
 from batch import run_batch
 from process_audio import process_audio
 from generate_context import generate_context
+from generate_transcript import SONIOX_API_BASE_URL
 from utils import FailureLog
 
 
@@ -20,7 +21,7 @@ def get_languages() -> list[str]:
         raise RuntimeError("Missing SONIOX_API_KEY")
 
     headers = {"Authorization": f"Bearer {api_key}"}
-    response = requests.get("https://api.soniox.com/v1/models", headers=headers)
+    response = requests.get(f"{SONIOX_API_BASE_URL}/v1/models", headers=headers)
     response.raise_for_status()
     data = response.json()
     model = next((m for m in data["models"] if m["id"] == "stt-async-v5"))
@@ -32,30 +33,32 @@ def check_languages(args: argparse.Namespace) -> None:
     Checks that any enabled language settings are in available languages.
     """
 
-    if args.translation or args.keep_only or args.language_hints:
+    if args.keep_only or args.language_hints:
         supported_languages = get_languages()
-        if args.translation and args.translation not in supported_languages:
-            raise SystemExit(
-                f"Target language {args.translation} is not in available languages."
-                f"Available languages are: {'\n'.join(supported_languages)}"
-            )
         if args.language_hints:
-            unsupported = [lang for lang in args.language_hints if lang not in supported_languages]
+            unsupported = [
+                lang for lang in args.language_hints if lang not in supported_languages
+            ]
             if unsupported:
                 raise SystemExit(
                     f"One or more language hint(s) {args.language_hints} is not in available languages."
                     f"Available languages are: {'\n'.join(supported_languages)}"
                 )
         if args.keep_only:
-            unsupported = [lang for lang in args.keep_only if lang not in supported_languages]
+            unsupported = [
+                lang for lang in args.keep_only if lang not in supported_languages
+            ]
             if unsupported:
                 raise SystemExit(
                     f"One or more keep only language(s) {args.keep_only} is not in available languages."
                     f"Available languages are: {'\n'.join(supported_languages)}"
                 )
-        
+
 
 def build_parser() -> argparse.ArgumentParser:
+    """
+    Build CLI arguments.
+    """
     parser = argparse.ArgumentParser(
         prog="Subtitle Generator", description="Generate subtitles for a movie!"
     )
@@ -70,8 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Flat-dump all SRTs into this folder; if omitted, each SRT is written next to its source video",
     )
     run.add_argument("--language-hints", nargs="*")
-    run.add_argument("--keep-only", nargs="*", help="Drop transcript tokens not in this language code")
-    run.add_argument("--translation", type=str)
+    run.add_argument(
+        "--keep-only",
+        nargs="*",
+        help="Drop transcript tokens not in this language code",
+    )
     run.add_argument(
         "--default",
         action="store_true",
@@ -86,12 +92,14 @@ def main() -> None:
     temp_dir = Path(os.getenv("SUBGEN_TEMP_DIR", "./temp"))
     if args.command == "run":
         try:
-            
+
             # in case process was interruped before cleaning /temp
             shutil.rmtree(temp_dir, ignore_errors=True)
             failure_log = FailureLog()
 
-            print("Subtitle Generator v0.1.0, built by Erazem Mattick, powered by Soniox.")
+            print(
+                "Subtitle Generator v0.1.0, built by Erazem Mattick, powered by Soniox."
+            )
 
             check_languages(args=args)
 
@@ -118,7 +126,6 @@ def main() -> None:
                         output_dir=args.output_dir,
                         language_hints=args.language_hints,
                         kept_languages=args.keep_only,
-                        translation=args.translation,
                         default=args.default,
                         context=context,
                         failure_log=failure_log,

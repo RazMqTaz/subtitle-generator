@@ -4,12 +4,14 @@ from compile_transcript import compile_transcript
 from pathlib import Path
 
 ATTRIBUTION_TEXT = (
-    "Transcribed by Erazem Mattick\nhttps://github.com/RazMqTaz/subtitle-generator"
+    "Transcribed by RazMqTaz\nhttps://github.com/RazMqTaz/subtitle-generator"
 )
 ATTRIBUTION_DURATION_MS = 4000
 
 
-def create_subtitles(input_path: Path, kept_languages: list[str] | None) -> list[Subtitle]:
+def create_subtitles(
+    input_path: Path, kept_languages: list[str] | None
+) -> list[Subtitle]:
     """
     Use srt library to generate list of Subtitle objects from compiled transcript
     """
@@ -42,6 +44,8 @@ def write_subtitles(subtitles: list[Subtitle], output_path: Path) -> None:
     return
 
 
-def generate_srt(input_path: Path, output_path: Path, kept_languages: list[str] | None) -> None:
+def generate_srt(
+    input_path: Path, output_path: Path, kept_languages: list[str] | None
+) -> None:
     subtitles = create_subtitles(input_path=input_path, kept_languages=kept_languages)
     write_subtitles(subtitles=subtitles, output_path=output_path)

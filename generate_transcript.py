@@ -11,10 +11,12 @@ from requests import Session
 from pathlib import Path
 from utils import Context, FailureLog
 
-
-SONIOX_API_BASE_URL = "https://api.soniox.com"
-MAX_WAIT = 3600  # seconds before ending transcribe job
 load_dotenv()
+
+SONIOX_API_BASE_URL = os.getenv("SONIOX_API_BASE_URL", "https://api.soniox.com")
+
+
+MAX_WAIT = 3600  # seconds before ending transcribe job
 
 
 def _check_status(res: requests.Response) -> None:
@@ -26,7 +28,6 @@ def _check_status(res: requests.Response) -> None:
 
 def get_config(
     file_id: str | None,
-    translation: str | None,
     language_hints: list[str] | None,
     context: Context | None,
 ) -> dict:
@@ -40,18 +41,11 @@ def get_config(
     if context and context.get("terms"):
         config["context"] = context
 
-    if translation is not None:
-        config["translation"] = {
-            "type": "one_way",
-            "target_language": translation,
-        }
-
     return config
 
 
 def upload_audio(session: Session, audio_path: Path) -> str:
     file_size = audio_path.stat().st_size / (1024**2)
-    print(f"Uploading {audio_path}: {file_size:.1f} MB...")
     with open(audio_path, "rb") as f:
         res = session.post(f"{SONIOX_API_BASE_URL}/v1/files", files={"file": f})
     _check_status(res=res)
@@ -123,12 +117,9 @@ def delete_all_files(session: Session) -> None:
     if total == 0:
         return
 
-    print(f"Deleting {total} files...")
     for idx, file in enumerate(files):
         file_id = file["id"]
-        print(f"Deleting file: {file_id} ({idx + 1}/{total})")
         delete_file(session=session, file_id=file_id)
-    print(f"Deleted {total} files.")
 
 
 def delete_all_transcriptions(session: Session) -> None:
@@ -136,7 +127,6 @@ def delete_all_transcriptions(session: Session) -> None:
     cursor: str = ""
 
     while True:
-        print("Retrieving transcriptions...")
         res = session.get(f"{SONIOX_API_BASE_URL}/v1/transcriptions?cursor={cursor}")
         _check_status(res=res)
         res_json = res.json()
@@ -151,21 +141,16 @@ def delete_all_transcriptions(session: Session) -> None:
 
     total = len(transcriptions)
     if total == 0:
-        print("No transcriptions to delete.")
         return
 
-    print(f"Deleting {total} transcriptions...")
-    for idx, transcription in enumerate(transcriptions):
+    for transcription in transcriptions:
         transcription_id = transcription["id"]
-        print(f"Deleting transcription: {transcription_id} ({idx + 1}/{total})")
         delete_transcription(session=session, transcription_id=transcription_id)
-    print(f"Deleted {total} transcriptions.")
 
 
-def transcribe_file(
+def generate_transcript(
     session: Session,
     audio_path: Path,
-    translation: str | None,
     language_hints: list[str] | None,
     context: Context | None,
     output_path: Path,
@@ -174,22 +159,15 @@ def transcribe_file(
     file_id = None
     transcription_id = None
     try:
-
-        # cleanup in case previous session failed or left files.
-        delete_all_files(session=session)
-        delete_all_transcriptions(session=session)
-
         file_id = upload_audio(session=session, audio_path=audio_path)
 
         config = get_config(
             file_id=file_id,
-            translation=translation,
             language_hints=language_hints,
             context=context,
         )
 
         transcription_id = create_transcription(session=session, config=config)
-        print(f"Transcribing {audio_path}")
         wait_until_completed(
             session=session,
             transcription_id=transcription_id,
@@ -204,7 +182,6 @@ def transcribe_file(
         try:
             if transcription_id is not None:
                 delete_transcription(session=session, transcription_id=transcription_id)
-                print(f"Successfully deleted transcription: {transcription_id}")
         except Exception as e:
             failure_log.record(
                 path=audio_path,
@@ -217,48 +194,9 @@ def transcribe_file(
         try:
             if file_id is not None:
                 delete_file(session=session, file_id=file_id)
-                print(f"Successfully deleted file: {file_id}")
         except Exception as e:
             failure_log.record(
                 path=audio_path,
                 stage="[Cleanup]",
-                error=(
-                    f"Warning: file cleanup failed for {file_id}: {e}"
-                ),
+                error=(f"Warning: file cleanup failed for {file_id}: {e}"),
             )
-
-
-def generate_transcript(
-    audio_path: Path,
-    translation: str | None,
-    language_hints: list[str] | None,
-    context: Context,
-    failure_log: FailureLog,
-    output_path: Path = Path("transcript.json"),
-) -> None:
-
-    api_key = os.getenv("SONIOX_API_KEY")
-    if not api_key:
-        raise RuntimeError("Missing SONIOX_API_KEY")
-
-    session = requests.Session()
-    session.headers["Authorization"] = f"Bearer {api_key}"
-
-    retries = Retry(
-        total=5,
-        backoff_factor=2,
-        status_forcelist=[429],
-        allowed_methods=None,
-        respect_retry_after_header=True,
-    )
-    session.mount("https://", HTTPAdapter(max_retries=retries))
-
-    transcribe_file(
-        session=session,
-        audio_path=audio_path,
-        translation=translation,
-        language_hints=language_hints,
-        output_path=output_path,
-        context=context,
-        failure_log=failure_log,
-    )

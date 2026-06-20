@@ -1,6 +1,25 @@
 from pathlib import Path
 from threading import Lock
 from typing import TypedDict
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+    MofNCompleteColumn,
+    TimeElapsedColumn,
+)
+
+PROGRESS_COLUMNS = (
+    SpinnerColumn(),
+    TextColumn("[progress.description]{task.description}"),
+    BarColumn(),
+    TaskProgressColumn(),
+    MofNCompleteColumn(),
+    TimeElapsedColumn(),
+)
+
 
 class FailureLog:
     """
@@ -20,6 +39,7 @@ class FailureLog:
 
     def all(self) -> list[dict]:
         return list(self._failures)
-    
+
+
 class Context(TypedDict):
     terms: list[str]

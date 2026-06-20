@@ -28,6 +28,16 @@ ANTHROPIC_API_KEY=...
 
 The TMDB token is the long "Read Access Token" from your TMDB API settings, not the short v3 API key.
 
+### Optional: regional endpoint
+
+By default the tool talks to Soniox's US endpoint. To use a regional deployment (e.g. EU data residency), set `SONIOX_API_BASE_URL` in the same `.env`:
+
+```
+SONIOX_API_BASE_URL=https://api.eu.soniox.com
+```
+
+Omit it and it defaults to `https://api.soniox.com`. Works in Docker as-is (compose passes `.env` through).
+
 ## Install: Docker (recommended)
 
 The Docker setup handles Python, ffmpeg, and dependencies for you. You only need Docker on your host.
@@ -128,12 +138,6 @@ With language hints (helps Soniox stick to specific languages when audio is mult
 uv run main.py run --media-path ~/Videos/foo.mkv --language-hints en
 ```
 
-With translation (Soniox transcribes the source language and translates the cues into the target):
-
-```bash
-uv run main.py run --media-path ~/Videos/foo.mkv --translation es
-```
-
 With language filter (drops tokens Soniox tags as anything other than the chosen language; useful for content with made-up alien languages):
 
 ```bash
@@ -146,7 +150,7 @@ Mark the subtitle as the default track (adds `.default` to the filename so Jelly
 uv run main.py run --media-path ~/Videos/foo.mkv --default
 ```
 
-The `.srt` filename is also tagged with the language code when one is known (from `--keep-only`, `--translation`, or `--language-hints`), so a run with `--keep-only en --default` produces `Movie.2024.default.en.srt`.
+The `.srt` filename is also tagged with the language code when one is known (from `--keep-only` or `--language-hints`), so a run with `--keep-only en --default` produces `Movie.2024.default.en.srt`.
 
 ### Where the files go
 
@@ -214,6 +218,7 @@ If the title or season/episode can't be extracted, the file gets skipped (no con
 * Audio extraction picks the first stream tagged `eng`/`en`, or falls back to the first audio stream if everything is tagged `und`. If your file has only Italian or Japanese audio, point Soniox at it with `--language-hints` and skip the English autodetection assumption.
 * 5.1/7.1 sources get the front-center channel extracted (where dialogue lives). Stereo and mono sources go through a standard ffmpeg downmix.
 * Files in the same input tree should have unique filenames. `tv/s1/E01.mkv` and `tv/s2/E01.mkv` would both land at `temp/E01.flac` and the second would clobber the first.
+* **No translation.** Soniox can translate, but its translated tokens carry no timestamps — they're emitted per phrase-chunk after the spoken tokens, not word-aligned to the audio. Subtitles compiled from them would have visibly worse cue timing than the word-accurate source track, so this tool transcribes in the source language only. Use a dedicated subtitle-translation pass downstream if you need other languages.
 
 ## Project layout
 
